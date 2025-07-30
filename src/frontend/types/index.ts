@@ -33,6 +33,7 @@ interface HistoryUser {
   secondRound: boolean;
   examScore: number;
   ticket: Ticket;
+  entrada: Date | null;
 }
 
 export interface History {
@@ -96,25 +97,14 @@ export interface IUser {
 export interface List {
   _id?: string;
   title: string;
-  owner: IUser;
+  owner?: IUser;
   startDate: Date;
   endDate: Date;
   domain: string;
   isExam: boolean;
   eventId: IEvent;
   historico?: History;
-}
-
-export interface ILot {
-  _id?: string;
-  title: string;
-  sold_out: boolean;
-  quantity: number;
-  value: number;
-  eventId: string;
-  maleLot: boolean;
-  femaleLot: boolean;
-  users?: IUser[];
+  eventName?: string;
 }
 
 export interface IPromoter {
@@ -128,7 +118,7 @@ export interface IPromoter {
 }
 
 export interface UserLocalStorage {
-  _id: string;
+  id: string;
   name: string;
   cpf: string;
   profile: string;
@@ -143,7 +133,6 @@ export interface IEvent {
   endDate: Date | null;
   lists: List[];
   domain: string;
-  lots: ILot[];
   basePrice: number;
   femaleBasePrice: number;
   maleBasePrice: number;

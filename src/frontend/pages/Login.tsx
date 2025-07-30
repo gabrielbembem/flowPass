@@ -1,7 +1,4 @@
-/* eslint-disable */
-/* prettier-ignore */
-
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Container,
   Typography,
@@ -12,11 +9,15 @@ import {
   Snackbar,
   Alert,
   CircularProgress,
-  useMediaQuery,
   Grid2,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
-import { handleCpfChange, validateCPF } from "../utils";
+import {
+  handleCpfChange,
+  validateCPF,
+  setAlertFunction,
+  showSessionExpiredAlert,
+} from "../utils";
 import { handleLogin } from "../services";
 import { AxiosError } from "axios";
 import bgImage from "../../assets/bgmaio2.png";
@@ -33,7 +34,6 @@ const Login: React.FC = () => {
   const [snackbarSeverity, setSnackbarSeverity] = useState<"success" | "error">(
     "success"
   );
-  const isDesktop = useMediaQuery("(min-width: 768px)");
 
   const handleCheck = async () => {
     setLoading(true);
@@ -86,6 +86,22 @@ const Login: React.FC = () => {
   const handleCloseSnackbar = () => {
     setSnackbarOpen(false);
   };
+
+  useEffect(() => {
+    setAlertFunction((message, severity) => {
+      setSnackbarMessage(message);
+      setSnackbarSeverity(severity);
+      setSnackbarOpen(true);
+    });
+
+    // Verifica se foi redirecionado por sessão expirada
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("expired") === "true") {
+      showSessionExpiredAlert();
+      // Limpa o parâmetro da URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   return (
     <>

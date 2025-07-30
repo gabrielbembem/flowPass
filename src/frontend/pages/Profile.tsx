@@ -51,7 +51,6 @@ import {
   History,
   History2,
   IEvent,
-  ILot,
 } from "../types";
 import { DatePicker } from "@mui/x-date-pickers";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -211,19 +210,17 @@ const Profile: React.FC = () => {
     setIsModalOpenTicket(false);
   };
 
-  const handleSelectList = async (list: List) => {
+  const handleSelectList = async (list: any, eventId: any) => {
     setSelectedList(list);
-    setHistoryId(list.historico?._id || "");
-    console.log("Selected List:", list);
+    setHistoryId(list.historico);
+    console.log("setHistoryId:", list.historico);
     try {
       setProfileData((prevProfileData) => ({
         ...prevProfileData,
-        currentList: list._id || "", // Ensure currentList is always a string
+        currentList: list._id || "",
       }));
-      const currentEvent = events.find(
-        (event) => event._id === list.eventId?.toString()
-      );
-      setSelectedEvent(currentEvent || null);
+
+      setSelectedEvent(eventId);
 
       handleCloseModal();
     } catch (error) {
@@ -265,13 +262,8 @@ const Profile: React.FC = () => {
 
   const handleSaveUser = async () => {
     try {
-      const userToUpdate = {
-        ...profileData,
-        currentLists: profileData.currentList || undefined, // Remove array vazio
-      };
-
       // Certifique-se de obter o ID correto do usuário criado/atualizado
-      const updatedUser = await createOrUpdateUser(userToUpdate);
+      const updatedUser = await createOrUpdateUser(profileData);
       const userId = updatedUser._id || profileData._id;
 
       if (!userId) {
@@ -279,12 +271,13 @@ const Profile: React.FC = () => {
       }
 
       // Verifique se historyId é válido
-      if (profileData.profile === "Usuário" && historyId) {
+      if (historyId) {
         await updateUserInHistory(historyId.toString(), userId.toString(), {
           firstRound,
           secondRound,
           ticket: { paying: isFree, reason: motivo, approver: userId },
           ...(examScore !== undefined && { examScore: Number(examScore) }),
+          entrada: new Date(),
         });
       }
 
@@ -433,7 +426,6 @@ const Profile: React.FC = () => {
       });
 
       setLista(filteredLists); // Atualiza o estado com as listas filtradas
-      console.log("Filtered Lists:", filteredLists);
     } catch (error) {
       console.error("Erro ao carregar listas:", error);
     }
@@ -446,12 +438,12 @@ const Profile: React.FC = () => {
       // Garante que temos um array válido (ou vazio)
       const safeHistories = Array.isArray(histories) ? histories : [];
 
-      if (user?.profile === "Mentoria" || user?.profile === "Diretoria") {
-        return safeHistories.filter((history) => {
-          // Verificação completa com optional chaining
-          return history.users?.[0]?.id?.client_id === "amorChurch";
-        });
-      }
+      // if (user?.profile === "Mentoria" || user?.profile === "Diretoria") {
+      //   return safeHistories.filter((history) => {
+      //     // Verificação completa com optional chaining
+      //     return history.users?.[0]?.id?.client_id === "amorChurch";
+      //   });
+      // }
 
       return safeHistories.filter((history) => {
         return history.users?.some((userHistory) => {
@@ -469,13 +461,13 @@ const Profile: React.FC = () => {
     setLoading(true);
     try {
       const data = await getEvents();
+      const currentDate = new Date(); // Data atual
 
-      // Verifica se user existe antes de filtrar
-      const filteredEvents = user
-        ? data.filter((event: IEvent) => event.domain === user.client_id)
-        : data; // Retorna todos se não houver user
-
-      setEvents(filteredEvents);
+      // Filtra apenas eventos com data de fim posterior à data atual
+      const activeEvents = data.filter((event: IEvent) =>
+        event.endDate ? new Date(event.endDate) > currentDate : false
+      );
+      setEvents(activeEvents);
     } catch (error) {
       console.error("Erro ao carregar Eventos:", error);
     } finally {
@@ -636,31 +628,34 @@ const Profile: React.FC = () => {
                     <Typography variant="h6" gutterBottom>
                       Selecione uma Lista
                     </Typography>
-                    {lista.length ? (
+                    {events.length ? (
                       <MuiList>
-                        {lista.map((listas, index) => (
-                          <>
-                            <ListItem
-                              component="li"
-                              key={index}
-                              onClick={() =>
-                                listas._id && handleSelectList(listas)
-                              }
-                              sx={{
-                                cursor: "pointer", // Cursor pointer para indicar que é clicável
-                                "&:hover": {
-                                  backgroundColor: "#CAFFD2", // Cor de fundo ao passar o mouse
-                                },
-                              }}
-                            >
-                              <ListItemText
-                                primary={listas.title}
-                                secondary={listas.owner.name}
-                              />
-                            </ListItem>
-                            {lista.length > 1 && <Divider />}
-                          </>
-                        ))}
+                        {events.map((event, index) =>
+                          event.lists.map((lista, index) => (
+                            <>
+                              <ListItem
+                                component="li"
+                                key={index}
+                                onClick={() =>
+                                  lista._id &&
+                                  handleSelectList(lista, event._id)
+                                }
+                                sx={{
+                                  cursor: "pointer", // Cursor pointer para indicar que é clicável
+                                  "&:hover": {
+                                    backgroundColor: "#CAFFD2", // Cor de fundo ao passar o mouse
+                                  },
+                                }}
+                              >
+                                <ListItemText
+                                  primary={lista.title}
+                                  secondary={event.title}
+                                />
+                              </ListItem>
+                              <Divider />
+                            </>
+                          ))
+                        )}
                       </MuiList>
                     ) : (
                       <Typography
@@ -674,25 +669,25 @@ const Profile: React.FC = () => {
                   </Box>
                 </Modal>
               </Stack>
-              <Grid
-                container
-                spacing={2}
-                sx={{
-                  padding: "20px",
-                  marginTop: "20px",
-                  alignItems: "center",
-                }}
-                flexDirection={{ xs: "column", md: "row" }}
-              >
+              {!isAmorChurch && (
                 <Grid
-                  item
-                  xs={12}
-                  md={6}
-                  display={"flex"}
-                  justifyContent={"center"}
-                  sx={{ paddingLeft: "16px" }}
+                  container
+                  spacing={2}
+                  sx={{
+                    padding: "20px",
+                    marginTop: "20px",
+                    alignItems: "center",
+                  }}
+                  flexDirection={{ xs: "column", md: "row" }}
                 >
-                  {!isAmorChurch && profileData.profile === "Usuário" && (
+                  <Grid
+                    item
+                    xs={12}
+                    md={6}
+                    display={"flex"}
+                    justifyContent={"center"}
+                    sx={{ paddingLeft: "16px" }}
+                  >
                     <Box sx={{ paddingTop: "16px", paddingLeft: "16px" }}>
                       <FormControlLabel
                         control={
@@ -728,78 +723,78 @@ const Profile: React.FC = () => {
                         disabled={selectedList !== null}
                       />
                     </Box>
-                  )}
-                </Grid>
-                <Divider />
-                <Grid
-                  item
-                  xs={12}
-                  md={6}
-                  flexDirection={"row"}
-                  sx={{ marginTop: "20px", maxWidth: "900px" }}
-                >
-                  {["Promotor", "Usuário"].includes(profileData.profile) && (
-                    <Box
-                      sx={{
-                        flexDirection: "row",
-                        display: "flex",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <Typography
-                        gutterBottom
+                  </Grid>
+                  <Divider />
+                  <Grid
+                    item
+                    xs={12}
+                    md={6}
+                    flexDirection={"row"}
+                    sx={{ marginTop: "20px", maxWidth: "900px" }}
+                  >
+                    {["Promotor", "Usuário"].includes(profileData.profile) && (
+                      <Box
                         sx={{
-                          display: "block",
-                          color: "#03624c",
-                          padding: "5px",
-                          fontSize: "13px",
+                          flexDirection: "row",
+                          display: "flex",
+                          justifyContent: "center",
                         }}
                       >
-                        {profileData.profile === "Promotor" && "R$"}
-                      </Typography>
-                      <Typography
-                        variant="h5"
-                        gutterBottom
-                        sx={{ display: "block", color: "#03624c" }}
-                      >
-                        {profileData.profile === "Promotor" ? (
-                          profileData.cash === 0 ? (
-                            "0,00"
+                        <Typography
+                          gutterBottom
+                          sx={{
+                            display: "block",
+                            color: "#03624c",
+                            padding: "5px",
+                            fontSize: "13px",
+                          }}
+                        >
+                          {profileData.profile === "Promotor" && "R$"}
+                        </Typography>
+                        <Typography
+                          variant="h5"
+                          gutterBottom
+                          sx={{ display: "block", color: "#03624c" }}
+                        >
+                          {profileData.profile === "Promotor" ? (
+                            profileData.cash === 0 ? (
+                              "0,00"
+                            ) : (
+                              profileData.cash.toLocaleString("pt-BR", {
+                                minimumFractionDigits: 2,
+                              })
+                            )
                           ) : (
-                            profileData.cash.toLocaleString("pt-BR", {
-                              minimumFractionDigits: 2,
-                            })
-                          )
-                        ) : (
-                          <TextField
-                            label="Valor da Entrada"
-                            type="number"
-                            fullWidth
-                            value={
-                              isFree
-                                ? 0
-                                : basePrice > 0
-                                  ? basePrice
-                                  : selectedEvent?.basePrice
-                            }
-                            onChange={(e) =>
-                              setBasePrice(Number(e.target.value))
-                            }
-                            InputProps={{
-                              startAdornment: (
-                                <InputAdornment position="start">
-                                  R$
-                                </InputAdornment>
-                              ),
-                            }}
-                            disabled={isFree}
-                          />
-                        )}
-                      </Typography>
-                    </Box>
-                  )}
+                            <TextField
+                              label="Valor da Entrada"
+                              type="number"
+                              fullWidth
+                              value={
+                                isFree
+                                  ? 0
+                                  : basePrice > 0
+                                    ? basePrice
+                                    : selectedEvent?.basePrice
+                              }
+                              onChange={(e) =>
+                                setBasePrice(Number(e.target.value))
+                              }
+                              InputProps={{
+                                startAdornment: (
+                                  <InputAdornment position="start">
+                                    R$
+                                  </InputAdornment>
+                                ),
+                              }}
+                              disabled={isFree}
+                            />
+                          )}
+                        </Typography>
+                      </Box>
+                    )}
+                  </Grid>
                 </Grid>
-              </Grid>
+              )}
               <Container
                 sx={{
                   display: "flex",
@@ -1002,7 +997,6 @@ const Profile: React.FC = () => {
                                 key={index}
                                 sx={{ mb: 2, marginTop: "5px" }}
                               >
-                                {/* Bloco 1: Título e Data */}
                                 <Grid
                                   item
                                   xs={12}
@@ -1024,7 +1018,6 @@ const Profile: React.FC = () => {
                                   </Typography>
                                 </Grid>
 
-                                {/* Bloco 2: Checkboxes de Turnos (só aparece se isAmorChurch for true) */}
                                 {isAmorChurch && (
                                   <Grid
                                     item
@@ -1088,7 +1081,6 @@ const Profile: React.FC = () => {
                                   </Grid>
                                 )}
 
-                                {/* Bloco 3: Campo de Nota (só aparece se for exame) */}
                                 {isAmorChurch && history.isExam && (
                                   <Grid
                                     item
@@ -1133,6 +1125,22 @@ const Profile: React.FC = () => {
                         Sem histórico de entradas
                       </Typography>
                     )}
+                    <Typography
+                      variant="subtitle1"
+                      sx={{ color: "grey" }}
+                      gutterBottom
+                    >
+                      Sem histórico de entradas
+                    </Typography>
+                  </MuiList>
+                  <MuiList>
+                    <Typography
+                      variant="subtitle1"
+                      sx={{ color: "grey" }}
+                      gutterBottom
+                    >
+                      Sem histórico de entradas
+                    </Typography>
                   </MuiList>
                   <MuiList>
                     {profileData.history?.length

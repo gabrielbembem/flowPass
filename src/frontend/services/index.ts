@@ -1,6 +1,5 @@
 import axios from "axios";
 import {
-  ILot,
   IPromoter,
   IUser,
   UpdateHistoryData,
@@ -27,27 +26,103 @@ interface LoginResponse {
 
 // USERS -------------------------------------------------------------------------
 
+export const handleLogin = async (
+  cpf: string,
+  password: string
+): Promise<LoginResponse> => {
+  try {
+    // Faz a requisição de login
+    const response = await axios.post<LoginResponse>(`${API_URL}/login`, {
+      cpf,
+      password,
+    });
+
+    // Armazena o token no localStorage
+    localStorage.setItem("token", response.data.token);
+
+    // Armazena os dados do usuário no localStorage
+    localStorage.setItem("user", JSON.stringify(response.data.user));
+
+    // Retorna os dados da resposta
+    return response.data;
+  } catch (error) {
+    console.error("Erro ao fazer login:", error);
+    throw error;
+  }
+};
+
 export const getUsers = async () => {
-  const response = await axios.get(`${API_URL}/users`);
-  return response.data;
+  try {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      throw new Error(
+        "Token de autenticação não encontrado - faça login novamente"
+      );
+    }
+    const response = await axios.get(`${API_URL}/users`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return response.data;
+  } catch (error) {
+    // 3. Tratamento detalhado de erros
+    if (axios.isAxiosError(error)) {
+      switch (error.response?.status) {
+        case 401:
+          throw new Error("Sessão expirada - você foi desconectado");
+
+        case 403:
+          throw new Error("Acesso negado - seu perfil não tem permissão");
+
+        case 404:
+          throw new Error("Recurso não encontrado");
+
+        default:
+          throw new Error(
+            `Erro ao buscar usuários: ${error.response?.data?.message || error.message}`
+          );
+      }
+    }
+
+    console.error("Erro na requisição getUsers:", error);
+    throw new Error("Erro inesperado ao buscar usuários");
+  }
 };
 
 // Buscar perfil do usuário por CPF
 export const getUserProfileByCpf = async (cpf: string) => {
   try {
-    const token = localStorage.getItem("token"); // Recupera o token do localStorage
+    const token = localStorage.getItem("token");
     if (!token) {
-      throw new Error("Token de autenticação não encontrado");
+      throw new Error(
+        "getUserProfileByCpf - Token de autenticação não encontrado"
+      );
     }
-    const response = await axios.get(`${API_URL}/users/${cpf}`, {
+
+    const cleanCpf = cpf.replace(/\D/g, "");
+
+    const response = await axios.get(`${API_URL}/users/${cleanCpf}`, {
       headers: {
         Authorization: `Bearer ${token}`, // Envia o token no cabeçalho
       },
     });
+
     return response.data; // Retorna os dados do usuário ou null
   } catch (error) {
+    if (axios.isAxiosError(error)) {
+      // Trata diferentes códigos de status
+      if (error.response?.status === 403) {
+        throw new Error("Acesso negado - verifique suas permissões");
+      } else if (error.response?.status === 404) {
+        throw new Error("Usuário não encontrado no sistema");
+      } else if (error.response?.status === 401) {
+        throw new Error("Sessão expirada - faça login novamente");
+      }
+    }
     console.error("Erro ao buscar perfil do usuário:", error);
-    throw error; // Lança o erro para ser tratado no componente
+    throw new Error("Erro ao buscar informações do usuário");
   }
 };
 
@@ -73,17 +148,22 @@ export const getUserById = async (userId: string) => {
 // Criar ou atualizar usuário
 export const createOrUpdateUser = async (userData: IUser) => {
   try {
-    const token = localStorage.getItem("token"); // Recupera o token do localStorage
-
+    const token = localStorage.getItem("token");
     if (!token) {
       throw new Error("Token de autenticação não encontrado");
     }
 
-    if (userData._id === "") {
-      delete userData._id;
+    // Mantém o client_id apenas se estiver criando novo usuário
+    const dataToSend = {
+      ...userData,
+      client_id: userData._id ? undefined : userData.client_id,
+    };
+
+    if (dataToSend._id === "") {
+      delete dataToSend._id;
     }
 
-    const response = await axios.post(`${API_URL}/users`, userData, {
+    const response = await axios.post(`${API_URL}/users`, dataToSend, {
       headers: {
         Authorization: `Bearer ${token}`, // Adiciona o token no cabeçalho
       },
@@ -127,7 +207,16 @@ export const checkUserByCpf = async (cpf: string) => {
 
 export const getLists = async () => {
   try {
-    const response = await axios.get(`${API_URL}/lists`);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      throw new Error("getLists - Token de autenticação não encontrado");
+    }
+
+    const response = await axios.get(`${API_URL}/lists`, {
+      headers: {
+        Authorization: `Bearer ${token}`, // Envia o token no cabeçalho
+      },
+    });
     return response.data;
   } catch (error) {
     console.error("Erro ao buscar listas:", error);
@@ -141,7 +230,15 @@ export const createList = async (listData: any) => {
     delete data.historico;
   }
   try {
-    const response = await axios.post(`${API_URL}/lists`, data);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      throw new Error("createList - Token de autenticação não encontrado");
+    }
+    const response = await axios.post(`${API_URL}/lists`, data, {
+      headers: {
+        Authorization: `Bearer ${token}`, // Envia o token no cabeçalho
+      },
+    });
     return response.data;
   } catch (error) {
     console.error("Erro ao criar lista:", error);
@@ -160,7 +257,16 @@ export const updateList = async (
   }
 ) => {
   try {
-    const response = await axios.put(`${API_URL}/lists/${id}`, listData);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      throw new Error("updateList - Token de autenticação não encontrado");
+    }
+    const response = await axios.put(`${API_URL}/lists/${id}`, listData, {
+      headers: {
+        Authorization: `Bearer ${token}`, // Envia o token no cabeçalho
+      },
+    });
+
     return response.data;
   } catch (error) {
     console.error("Erro ao atualizar lista:", error);
@@ -172,7 +278,15 @@ export const updateList = async (
 
 export const getPromoters = async (): Promise<IPromoter[]> => {
   try {
-    const response = await axios.get(`${API_URL}/promoters`);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      throw new Error("getPromoters - Token de autenticação não encontrado");
+    }
+    const response = await axios.get(`${API_URL}/promoters`, {
+      headers: {
+        Authorization: `Bearer ${token}`, // Envia o token no cabeçalho
+      },
+    });
     return response.data;
   } catch (error) {
     console.error("Erro ao buscar promotores:", error);
@@ -184,7 +298,15 @@ export const createPromoter = async (
   promoterData: Omit<IPromoter, "_id">
 ): Promise<IPromoter> => {
   try {
-    const response = await axios.post(`${API_URL}/promoters`, promoterData);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      throw new Error("createPromoter - Token de autenticação não encontrado");
+    }
+    const response = await axios.post(`${API_URL}/promoters`, promoterData, {
+      headers: {
+        Authorization: `Bearer ${token}`, // Envia o token no cabeçalho
+      },
+    });
     return response.data;
   } catch (error) {
     console.error("Erro ao criar promotor:", error);
@@ -209,31 +331,6 @@ export const updatePromoter = async (
   }
 };
 
-export const handleLogin = async (
-  cpf: string,
-  password: string
-): Promise<LoginResponse> => {
-  try {
-    // Faz a requisição de login
-    const response = await axios.post<LoginResponse>(`${API_URL}/login`, {
-      cpf,
-      password,
-    });
-
-    // Armazena o token no localStorage
-    localStorage.setItem("token", response.data.token);
-
-    // Armazena os dados do usuário no localStorage
-    localStorage.setItem("user", JSON.stringify(response.data.user));
-
-    // Retorna os dados da resposta
-    return response.data;
-  } catch (error) {
-    console.error("Erro ao fazer login:", error);
-    throw error;
-  }
-};
-
 export const removeUserFromList = async (listId: string, userId: string) => {
   try {
     const response = await axios.delete(
@@ -248,7 +345,15 @@ export const removeUserFromList = async (listId: string, userId: string) => {
 
 export const fetchQRCode = async (cpf: string) => {
   try {
-    const response = await axios.get(`${API_URL}/generate-qrcode/${cpf}`);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      throw new Error("fetchQRCode - Token de autenticação não encontrado");
+    }
+    const response = await axios.get(`${API_URL}/generate-qrcode/${cpf}`, {
+      headers: {
+        Authorization: `Bearer ${token}`, // Envia o token no cabeçalho
+      },
+    });
     return response.data;
   } catch (error) {
     console.error("Erro ao buscar QR code:", error);
@@ -289,10 +394,17 @@ export const createEvent = async (eventData: {
   listDate: Date | null;
   lists: string[];
   domain: string;
-  lots: ILot[];
 }) => {
   try {
-    const response = await axios.post(`${API_URL}/events`, eventData);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      throw new Error("createEvent - Token de autenticação não encontrado");
+    }
+    const response = await axios.post(`${API_URL}/events`, eventData, {
+      headers: {
+        Authorization: `Bearer ${token}`, // Envia o token no cabeçalho
+      },
+    });
     return response.data;
   } catch (error) {
     console.error("Erro ao criar evento:", error);
@@ -302,7 +414,15 @@ export const createEvent = async (eventData: {
 
 export const getEvents = async () => {
   try {
-    const response = await axios.get(`${API_URL}/events`);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      throw new Error("getEvents - Token de autenticação não encontrado");
+    }
+    const response = await axios.get(`${API_URL}/events`, {
+      headers: {
+        Authorization: `Bearer ${token}`, // Envia o token no cabeçalho
+      },
+    });
     return response.data;
   } catch (error) {
     console.error("Erro ao buscar eventos:", error);
@@ -312,7 +432,15 @@ export const getEvents = async () => {
 
 export const updateEvent = async (id: string, eventData: IEventUpdate) => {
   try {
-    const response = await axios.put(`${API_URL}/events/${id}`, eventData);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      throw new Error("updateEvent - Token de autenticação não encontrado");
+    }
+    const response = await axios.put(`${API_URL}/events/${id}`, eventData, {
+      headers: {
+        Authorization: `Bearer ${token}`, // Envia o token no cabeçalho
+      },
+    });
     return response.data;
   } catch (error) {
     console.error("Erro ao atualizar o evento:", error);
@@ -324,7 +452,15 @@ export const updateEvent = async (id: string, eventData: IEventUpdate) => {
 
 export const getHistory = async (): Promise<History[] | undefined> => {
   try {
-    const response = await axios.get(`${API_URL}/histories`);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      throw new Error("getHistory - Token de autenticação não encontrado");
+    }
+    const response = await axios.get(`${API_URL}/histories`, {
+      headers: {
+        Authorization: `Bearer ${token}`, // Envia o token no cabeçalho
+      },
+    });
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
@@ -347,7 +483,15 @@ export const getHistory = async (): Promise<History[] | undefined> => {
 
 export const getHistoryById = async (id: string): Promise<History> => {
   try {
-    const response = await axios.get(`${API_URL}/histories/${id}`);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      throw new Error("getHistoryById - Token de autenticação não encontrado");
+    }
+    const response = await axios.get(`${API_URL}/histories/${id}`, {
+      headers: {
+        Authorization: `Bearer ${token}`, // Envia o token no cabeçalho
+      },
+    });
     return response.data;
   } catch (error) {
     console.error("Erro ao buscar histórico:", error);
@@ -357,7 +501,15 @@ export const getHistoryById = async (id: string): Promise<History> => {
 
 export const createHistory = async (historyData: History): Promise<History> => {
   try {
-    const response = await axios.post(`${API_URL}/histories`, historyData);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      throw new Error("createHistory - Token de autenticação não encontrado");
+    }
+    const response = await axios.post(`${API_URL}/histories`, historyData, {
+      headers: {
+        Authorization: `Bearer ${token}`, // Envia o token no cabeçalho
+      },
+    });
     return response.data;
   } catch (error) {
     console.error("Erro ao criar histórico:", error);
@@ -370,7 +522,19 @@ export const updateHistory = async (
   historyData: UpdateHistoryData
 ): Promise<History> => {
   try {
-    const response = await axios.put(`${API_URL}/histories/${id}`, historyData);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      throw new Error("updateHistory - Token de autenticação não encontrado");
+    }
+    const response = await axios.put(
+      `${API_URL}/histories/${id}`,
+      historyData,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`, // Envia o token no cabeçalho
+        },
+      }
+    );
     return response.data;
   } catch (error) {
     console.error("Erro ao atualizar histórico:", error);
@@ -380,7 +544,15 @@ export const updateHistory = async (
 
 export const deleteHistory = async (id: string): Promise<void> => {
   try {
-    await axios.delete(`${API_URL}/histories/${id}`);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      throw new Error("deleteHistory - Token de autenticação não encontrado");
+    }
+    await axios.delete(`${API_URL}/histories/${id}`, {
+      headers: {
+        Authorization: `Bearer ${token}`, // Envia o token no cabeçalho
+      },
+    });
   } catch (error) {
     console.error("Erro ao deletar histórico:", error);
     throw error;
@@ -415,6 +587,7 @@ export const updateUserInHistory = async (
       reason: string;
       approver: Types.ObjectId | null;
     };
+    entrada?: Date;
   }
 ) => {
   try {
@@ -436,89 +609,6 @@ export const updateUserInHistory = async (
     return response.data;
   } catch (error) {
     console.error("Erro ao atualizar usuário no histórico:", error);
-    throw error;
-  }
-};
-
-// LOTES ----------------------------------------------------------------------
-
-export const createLot = async (lotData: {
-  title: string;
-  quantity: number;
-  value: number;
-  eventId: string; // ID do evento
-  sold_out?: boolean;
-  users?: string[]; // IDs dos usuários
-}) => {
-  try {
-    const response = await axios.post(`${API_URL}/lots`, lotData);
-    return response.data;
-  } catch (error) {
-    console.error("Erro ao criar lote:", error);
-    throw error;
-  }
-};
-
-export const getLots = async () => {
-  try {
-    const response = await axios.get(`${API_URL}/lots`);
-    return response.data;
-  } catch (error) {
-    console.error("Erro ao buscar lotes:", error);
-    throw error;
-  }
-};
-
-export const getLotById = async (id: string) => {
-  try {
-    const response = await axios.get(`${API_URL}/lots/${id}`);
-    return response.data;
-  } catch (error) {
-    console.error("Erro ao buscar lote:", error);
-    throw error;
-  }
-};
-
-export const updateLot = async (id: string, lotData: Partial<ILot>) => {
-  try {
-    const response = await axios.put(`${API_URL}/lots/${id}`, lotData);
-    return response.data;
-  } catch (error) {
-    console.error("Erro ao atualizar o lote:", error);
-    throw error;
-  }
-};
-
-export const deleteLot = async (id: string) => {
-  try {
-    const response = await axios.delete(`${API_URL}/lots/${id}`);
-    return response.data;
-  } catch (error) {
-    console.error("Erro ao deletar o lote:", error);
-    throw error;
-  }
-};
-
-export const addUserToLot = async (lotId: string, userId: string) => {
-  try {
-    const response = await axios.post(`${API_URL}/lots/${lotId}/add-user`, {
-      userId,
-    });
-    return response.data;
-  } catch (error) {
-    console.error("Erro ao adicionar usuário ao lote:", error);
-    throw error;
-  }
-};
-
-export const removeUserFromLot = async (lotId: string, userId: string) => {
-  try {
-    const response = await axios.post(`${API_URL}/lots/${lotId}/remove-user`, {
-      userId,
-    });
-    return response.data;
-  } catch (error) {
-    console.error("Erro ao remover usuário do lote:", error);
     throw error;
   }
 };

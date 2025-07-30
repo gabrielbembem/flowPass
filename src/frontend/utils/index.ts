@@ -1,6 +1,18 @@
 import { useNavigate } from "react-router-dom";
 import { IPenalty, PenaltyDuration, UserLocalStorage } from "../types";
 
+let showAlertFunction: (message: string, severity: "error" | "success") => void;
+
+export const setAlertFunction = (fn: typeof showAlertFunction) => {
+  showAlertFunction = fn;
+};
+
+export const showSessionExpiredAlert = () => {
+  if (showAlertFunction) {
+    showAlertFunction("Sessão expirada - faça login novamente", "error");
+  }
+};
+
 export const handleCpfChange = (value: string | null | undefined): string => {
   // Se o valor for null ou undefined, substitui por uma string vazia
   value = value || "";
@@ -93,10 +105,9 @@ export const useLogout = () => {
   const logout = () => {
     // 1. Limpa os dados de autenticação
     localStorage.removeItem("token"); // Remove o token do localStorage
-    sessionStorage.removeItem("token"); // Remove o token do sessionStorage (se aplicável)
 
     // 2. Redireciona para a rota de login
-    navigate("/", { replace: true }); // O `replace: true` impede que a página anterior fique no histórico
+    navigate("/?expired=true", { replace: true }); // O `replace: true` impede que a página anterior fique no histórico
 
     // 3. Recarrega a página para garantir que o estado da aplicação seja resetado
     window.location.reload();

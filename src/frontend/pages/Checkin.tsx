@@ -362,46 +362,6 @@ const Checkin: React.FC = () => {
             </Box>
           </Grid>
         </Grid>
-        {/* <Modal open={isModalOpen} onClose={handleCloseModal}>
-          <Box
-            sx={{
-              position: "absolute",
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              width: 400,
-              bgcolor: "background.paper",
-              boxShadow: 24,
-              p: 4,
-              borderRadius: "8px",
-            }}
-          >
-            <Button
-              onClick={() => {}}
-              variant="contained"
-              sx={{
-                backgroundColor: "#26d07c",
-                "&:hover": {
-                  backgroundColor: "#1fa968",
-                },
-              }}
-            >
-              Confirmar presença
-            </Button>
-            <Button
-              onClick={goProfile}
-              variant="contained"
-              sx={{
-                backgroundColor: "#26d07c",
-                "&:hover": {
-                  backgroundColor: "#1fa968",
-                },
-              }}
-            >
-              Ir para perfil
-            </Button>
-          </Box>
-        </Modal> */}
       </Container>
     </>
   );
