@@ -107,6 +107,8 @@ export const CustomAppBar: React.FC<CustomAppBarProps> = ({
   logout,
 }) => {
   const location = useLocation();
+  const navigate = useNavigate();
+
   return (
     <AppBar
       position="static"
@@ -131,6 +133,14 @@ export const CustomAppBar: React.FC<CustomAppBarProps> = ({
             width: "50px",
             height: "50px",
             marginRight: { xs: "10px", sm: "20px" }, // Estilo responsivo
+            cursor: "pointer",
+            transition: "transform 0.3s ease",
+            "&:hover": {
+              transform: "scale(1.05)",
+            },
+          }}
+          onClick={() => {
+            navigate("/checkin");
           }}
         />
 

@@ -612,3 +612,5 @@ export const updateUserInHistory = async (
     throw error;
   }
 };
+
+export { uploadUserPhoto, dataURLtoBlob } from "./photoService";

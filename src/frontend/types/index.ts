@@ -92,6 +92,9 @@ export interface IUser {
   password?: string;
   histories?: History[];
   history?: History2[];
+  // Campos para funcionalidade de foto
+  photoPath?: string;
+  photoUpdatedAt?: Date;
 }
 
 export interface List {

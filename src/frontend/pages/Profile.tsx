@@ -28,12 +28,16 @@ import {
   FormControlLabel,
   Divider,
   InputAdornment,
+  Avatar,
 } from "@mui/material";
 import { useSearchParams } from "react-router-dom";
 import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
 import AddIcon from "@mui/icons-material/Add";
 import ErrorIcon from "@mui/icons-material/Error";
+import PersonIcon from "@mui/icons-material/Person";
+import CameraAltIcon from "@mui/icons-material/CameraAlt";
+import CloseIcon from "@mui/icons-material/Close";
 import {
   createOrUpdateUser,
   getEvents,
@@ -42,6 +46,8 @@ import {
   getUserProfileByCpf,
   updatePromotorCash,
   updateUserInHistory,
+  uploadUserPhoto,
+  dataURLtoBlob,
 } from "../services/index";
 import {
   IPenalty,
@@ -94,6 +100,10 @@ const Profile: React.FC = () => {
   const [lista, setLista] = useState<List[]>([]);
   const [searchParams] = useSearchParams();
   const cpf = (searchParams.get("cpf") || "").replace(/\D/g, "");
+
+  const allowedProfiles = ["Administrador", "Funcionário", "Mentoria"];
+  const canEditPhoto = user?.profile && allowedProfiles.includes(user.profile);
+
   const [profileData, setProfileData] = useState<IUser>({
     _id: "",
     name: "",
@@ -151,11 +161,164 @@ const Profile: React.FC = () => {
   const [selectedEvent, setSelectedEvent] = useState<IEvent | null>(null);
   const [basePrice, setBasePrice] = useState(0);
   const [isComum, setIsComum] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
 
   const isPenaltyActive = (penalty: IPenalty): boolean => {
     const today = new Date();
     const endDate = calculateEndDate(penalty);
     return today <= endDate; // Retorna true se a penalidade estiver vigente
+  };
+
+  const openCamera = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          facingMode: "user",
+        },
+      });
+      setStream(mediaStream);
+      setShowCamera(true);
+    } catch (error) {
+      console.error("Erro ao acessar a câmera:", error);
+      setSnackbarMessage("Erro ao acessar a câmera. Verifique as permissões.");
+      setSnackbarSeverity("error");
+      setSnackbarOpen(true);
+    }
+  };
+
+  const closeCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      setStream(null);
+    }
+    setShowCamera(false);
+  };
+
+  const capturePhoto = () => {
+    const video = document.getElementById("camera-video") as HTMLVideoElement;
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+
+    if (video && context) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      context.drawImage(video, 0, 0);
+
+      const photoDataUrl = canvas.toDataURL("image/jpeg", 0.8);
+      setCapturedPhoto(photoDataUrl);
+
+      savePhoto(photoDataUrl);
+
+      closeCamera();
+    }
+  };
+
+  const savePhoto = async (dataUrl: string) => {
+    try {
+      const photoBlob = dataURLtoBlob(dataUrl);
+      const result = await uploadUserPhoto(
+        photoBlob,
+        profileData._id || "",
+        profileData.cpf
+      );
+
+      if (result.success && result.data) {
+        setProfileData((prev) => ({
+          ...prev,
+          photoPath: result.data!.photoPath,
+          photoUpdatedAt: new Date(),
+        }));
+
+        setSnackbarMessage("Foto capturada e salva com sucesso!");
+        setSnackbarSeverity("success");
+      } else {
+        throw new Error(result.message || "Resposta inválida do servidor");
+      }
+    } catch (error) {
+      console.error("Erro ao salvar a foto:", error);
+
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Erro desconhecido ao salvar a foto.";
+
+      setSnackbarMessage(errorMessage);
+      setSnackbarSeverity("error");
+    } finally {
+      setSnackbarOpen(true);
+    }
+  };
+
+  const removePhoto = async () => {
+    try {
+      if (!profileData._id) {
+        setSnackbarMessage("ID do usuário não encontrado.");
+        setSnackbarSeverity("error");
+        setSnackbarOpen(true);
+        return;
+      }
+
+      const response = await fetch(
+        `${process.env.REACT_APP_API_FP_BE}/photos/${profileData._id}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        switch (response.status) {
+          case 401:
+            throw new Error("Sessão expirada. Faça login novamente.");
+          case 403:
+            throw new Error("Apenas Administradores podem remover fotos.");
+          case 404:
+            throw new Error("Usuário não encontrado.");
+          case 400:
+            throw new Error("Usuário não possui foto para remover.");
+          default:
+            throw new Error(
+              result.message ||
+                `Erro ${response.status}: ${response.statusText}`
+            );
+        }
+      }
+
+      if (result.success) {
+        setCapturedPhoto(null);
+
+        setProfileData((prev) => ({
+          ...prev,
+          photoPath: undefined,
+          photoUpdatedAt: undefined,
+        }));
+
+        setSnackbarMessage("Foto removida com sucesso!");
+        setSnackbarSeverity("success");
+      } else {
+        throw new Error(result.message || "Erro ao remover foto");
+      }
+    } catch (error) {
+      console.error("Erro ao remover foto:", error);
+
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Erro desconhecido ao remover a foto.";
+      setSnackbarMessage(errorMessage);
+      setSnackbarSeverity("error");
+    } finally {
+      setSnackbarOpen(true);
+    }
   };
 
   const handleAddIncident = () => {
@@ -192,7 +355,6 @@ const Profile: React.FC = () => {
   const handleChange = (field: keyof IUser, value: string | null | Date) => {
     let formattedValue = value;
 
-    // Formata a data para o padrão ISO (backend espera "1990-01-15T00:00:00.000Z")
     if (field === "birthDate" && value instanceof Date) {
       formattedValue = value.toISOString(); // Converte para o formato ISO
     }
@@ -355,7 +517,14 @@ const Profile: React.FC = () => {
         if (profile) {
           setProfileData(profile);
 
-          // 2. Busca os históricos em paralelo ou sequencial conforme necessidade
+          // 2. Definir foto do usuário se existir no photoPath
+          if (profile.photoPath) {
+            setCapturedPhoto(profile.photoPath);
+          } else {
+            setCapturedPhoto(null);
+          }
+
+          // 3. Busca os históricos em paralelo ou sequencial conforme necessidade
           const histories = await fetchHistories(profile._id || "");
 
           if (isMounted) {
@@ -481,6 +650,14 @@ const Profile: React.FC = () => {
     );
     setActivePenalties(active.length > 0);
   }, [profileData.penalties]);
+
+  useEffect(() => {
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [stream]);
 
   const getAulaDoDia = (listas: List[]) => {
     const hoje = new Date().toDateString(); // Formato: "Tue May 21 2024"
@@ -820,6 +997,113 @@ const Profile: React.FC = () => {
                   <Typography variant="h6" gutterBottom>
                     Dados Pessoais
                   </Typography>
+
+                  <Box
+                    sx={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      marginBottom: "20px",
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        position: "relative",
+                        display: "inline-block",
+                      }}
+                    >
+                      <Avatar
+                        src={capturedPhoto || undefined}
+                        sx={{
+                          width: 120,
+                          height: 120,
+                          fontSize: "2rem",
+                          bgcolor: capturedPhoto ? "transparent" : "#26d07c",
+                          cursor: canEditPhoto ? "pointer" : "default",
+                          border: "3px solid #26d07c",
+                          transition: "all 0.3s ease",
+                          "&:hover": canEditPhoto
+                            ? {
+                                opacity: 0.8,
+                                transform: "scale(1.05)",
+                                boxShadow: "0 4px 20px rgba(38, 208, 124, 0.3)",
+                              }
+                            : {},
+                        }}
+                        onClick={canEditPhoto ? openCamera : undefined}
+                      >
+                        {!capturedPhoto && (
+                          <PersonIcon sx={{ fontSize: "3rem" }} />
+                        )}
+                      </Avatar>
+
+                      {capturedPhoto && canEditPhoto && (
+                        <IconButton
+                          onClick={removePhoto}
+                          sx={{
+                            position: "absolute",
+                            top: 0,
+                            right: 0,
+                            backgroundColor: "#f44336",
+                            border: "2px solid white",
+                            color: "white",
+                            width: 35,
+                            height: 35,
+                            "&:hover": {
+                              backgroundColor: "#d32f2f",
+                            },
+                          }}
+                        >
+                          <CloseIcon sx={{ fontSize: "1.2rem" }} />
+                        </IconButton>
+                      )}
+
+                      {canEditPhoto && (
+                        <Box
+                          sx={{
+                            position: "absolute",
+                            bottom: 0,
+                            right: 0,
+                            backgroundColor: "#26d07c",
+                            borderRadius: "50%",
+                            width: 35,
+                            height: 35,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            cursor: "pointer",
+                            border: "2px solid white",
+                            "&:hover": {
+                              backgroundColor: "#1fa968",
+                            },
+                          }}
+                          onClick={openCamera}
+                        >
+                          <CameraAltIcon
+                            sx={{ color: "white", fontSize: "1.2rem" }}
+                          />
+                        </Box>
+                      )}
+                    </Box>
+
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        marginTop: "8px",
+                        color: "#666",
+                        textAlign: "center",
+                      }}
+                    >
+                      {canEditPhoto
+                        ? capturedPhoto
+                          ? "Clique para alterar a foto"
+                          : "Clique para adicionar uma foto"
+                        : capturedPhoto
+                          ? ""
+                          : ""}
+                    </Typography>
+                  </Box>
+
                   <Grid container spacing={2}>
                     <Grid item xs={12} md={6}>
                       <TextField
@@ -1605,6 +1889,102 @@ const Profile: React.FC = () => {
             </>
           )}
         </Box>
+
+        {/* Modal da Câmera */}
+        <Modal open={showCamera} onClose={closeCamera}>
+          <Box
+            sx={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              width: "90%",
+              maxWidth: 700,
+              bgcolor: "background.paper",
+              boxShadow: 24,
+              p: 3,
+              borderRadius: "8px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 2,
+              "&:focus-visible": {
+                outline: "none",
+              },
+            }}
+          >
+            <Typography variant="h6" gutterBottom>
+              Capturar Foto
+            </Typography>
+
+            <Box
+              sx={{
+                position: "relative",
+                width: "100%",
+                maxWidth: 640,
+                height: 480,
+                backgroundColor: "#000",
+                borderRadius: "8px",
+                overflow: "hidden",
+              }}
+            >
+              <video
+                id="camera-video"
+                autoPlay
+                playsInline
+                muted
+                ref={(video) => {
+                  if (video && stream) {
+                    video.srcObject = stream;
+                  }
+                }}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                }}
+              />
+            </Box>
+
+            <Box
+              sx={{
+                display: "flex",
+                gap: 2,
+                mt: 2,
+              }}
+            >
+              <Button
+                onClick={capturePhoto}
+                variant="contained"
+                startIcon={<CameraAltIcon />}
+                sx={{
+                  backgroundColor: "#26d07c",
+                  "&:hover": {
+                    backgroundColor: "#1fa968",
+                  },
+                }}
+              >
+                Capturar Foto
+              </Button>
+
+              <Button
+                onClick={closeCamera}
+                variant="outlined"
+                sx={{
+                  borderColor: "#f44336",
+                  color: "#f44336",
+                  "&:hover": {
+                    borderColor: "#d32f2f",
+                    backgroundColor: "rgba(244, 67, 54, 0.04)",
+                  },
+                }}
+              >
+                Cancelar
+              </Button>
+            </Box>
+          </Box>
+        </Modal>
+
         <Modal open={isModalOpenTicket} onClose={handleCloseModal}>
           <Box
             sx={{
